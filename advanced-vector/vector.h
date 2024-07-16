@@ -239,17 +239,17 @@ public:
         else{
             RawMemory<T> new_data_(size_ == 0 ? 1 : size_ * 2);
             new (new_data_ + index) T(std::forward<Args>(args)...);
-            
             try{
                 CopyOrMoveNElem(data_.GetAddress(), index, new_data_.GetAddress());
             }catch(...){
                 (new_data_ + index)->~T();
+                throw;
             }
             try{
                 CopyOrMoveNElem(data_ + index, size_ - index, new_data_ + (index + 1));
             }catch(...){
-                std::destroy_n(new_data_.GetAddress(), index);
-                (new_data_ + index)->~T();
+                std::destroy_n(new_data_.GetAddress(), index + 1);
+                throw;
             }
             std::destroy_n(data_.GetAddress(), size_);
             data_.Swap(new_data_);
