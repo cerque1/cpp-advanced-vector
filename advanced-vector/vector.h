@@ -17,14 +17,12 @@ public:
 
     RawMemory(const RawMemory& other) = delete;
     RawMemory& operator=(const RawMemory& other) = delete;
-    RawMemory(RawMemory&& other) noexcept : capacity_(std::exchange(other.capacity_, 0)){
-        buffer_ = other.buffer_;
-        other.buffer_ = nullptr;
+    RawMemory(RawMemory&& other) noexcept {
+        Swap(other);
     }
     RawMemory& operator=(RawMemory&& other) noexcept{
         if(this != &other){
-            std::swap(buffer_, other.buffer_);
-            capacity_ = std::exchange(other.capacity_, 0);
+            Swap(other);
         }
         return *this;
     }
@@ -122,8 +120,7 @@ public:
         std::uninitialized_copy_n(other.data_.GetAddress(), other.size_, data_.GetAddress());
     }
     Vector(Vector&& other) noexcept {
-        std::swap(size_, other.size_);
-        std::swap(data_, other.data_);
+        Swap(other);
     }
 
     Vector& operator=(const Vector& other){
@@ -147,8 +144,7 @@ public:
     }
     Vector& operator=(Vector&& other) noexcept {
         if(this != &other){
-            std::swap(data_, other.data_);
-            size_ = std::exchange(other.size_, 0);
+            Swap(other);
         }
         return *this;
     }
@@ -256,7 +252,7 @@ public:
     }
 
     iterator Erase(const_iterator pos) noexcept(std::is_nothrow_move_assignable_v<T>){
-        assert(begin() <= pos && pos <= end());
+        assert(begin() <= pos && pos < end());
         size_t index = static_cast<size_t>(pos - data_.GetAddress());
         std::move(data_ + index + 1, data_ + size_, data_ + index);
         (data_ + size_ - 1)->~T();
