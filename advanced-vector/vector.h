@@ -23,8 +23,7 @@ public:
     }
     RawMemory& operator=(RawMemory&& other) noexcept{
         if(this != &other){
-            buffer_ = other.buffer_;
-            other.buffer_ = nullptr;
+            std::swap(buffer_, other.buffer_);
             capacity_ = std::exchange(other.capacity_, 0);
         }
         return *this;
@@ -122,7 +121,10 @@ public:
     Vector(const Vector& other) : data_(other.size_), size_(other.size_){
         std::uninitialized_copy_n(other.data_.GetAddress(), other.size_, data_.GetAddress());
     }
-    Vector(Vector&& other) noexcept : data_(std::move(other.data_)), size_(std::exchange(other.size_, 0)){}
+    Vector(Vector&& other) noexcept {
+        std::swap(size_, other.size_);
+        std::swap(data_, other.data_);
+    }
 
     Vector& operator=(const Vector& other){
         if(this != &other){
@@ -131,16 +133,11 @@ public:
                 Swap(copy);
             }
             else{
+                std::copy(other.data_.GetAddress(), other.data_ + std::min(size_, other.size_), data_.GetAddress());
                 if(size_ < other.size_){
-                    for(size_t i = 0; i < size_; i++){
-                        *(data_ + i) = other.data_[i];
-                    }
-                    std::uninitialized_copy_n(other.data_.GetAddress() + size_ - 1, other.size_ - size_, data_.GetAddress());
+                    std::uninitialized_copy_n(other.data_ + size_, other.size_ - size_, data_ + size_);
                 }
                 else{
-                    for(size_t i = 0; i < other.size_; i++){
-                        *(data_ + i) = other.data_[i];
-                    }
                     std::destroy_n(data_.GetAddress() + other.size_, size_ - other.size_);
                 }
                 size_ = other.size_;
@@ -150,7 +147,7 @@ public:
     }
     Vector& operator=(Vector&& other) noexcept {
         if(this != &other){
-            data_ = std::move(other.data_);
+            std::swap(data_, other.data_);
             size_ = std::exchange(other.size_, 0);
         }
         return *this;
@@ -176,18 +173,7 @@ public:
 
     template<typename... Args>
     T& EmplaceBack(Args&&... args){
-        if(data_.Capacity() >= size_ + 1){
-            new (data_ + size_) T(std::forward<Args>(args)...);
-        }
-        else{
-            RawMemory<T> new_data_(size_ == 0 ? 1 : size_ * 2);
-            new (new_data_ + size_) T(std::forward<Args>(args)...);
-            CopyOrMoveNElem(data_.GetAddress(), size_, new_data_.GetAddress());
-            std::destroy_n(data_.GetAddress(), size_);
-            data_.Swap(new_data_);
-        }
-        ++size_;
-        return data_[size_ - 1];
+        return *Emplace(cend(), std::forward<Args>(args)...);
     }
 
     void PushBack(const T& value){ 
@@ -198,8 +184,10 @@ public:
     }
 
     void PopBack(){
-        (data_ + size_ - 1)->~T();
-        --size_;
+        if(size_ > 0){
+            (data_ + size_ - 1)->~T();
+            --size_;
+        }
     }
 
     iterator begin() noexcept{
@@ -223,13 +211,15 @@ public:
 
     template<typename... Args>
     iterator Emplace(const_iterator pos, Args&&... args){
-        if(pos == end()){
-            EmplaceBack(std::forward<Args>(args)...);
-            return data_ + size_ - 1;
-        }
+        assert(begin() <= pos && pos <= end());
 
         size_t index = static_cast<size_t>(pos - data_.GetAddress());
         if(data_.Capacity() >= size_ + 1){
+            if(pos == end()){
+                new (data_ + size_) T(std::forward<Args>(args)...);
+                size_++;
+                return data_ + size_ - 1;
+            }
             T* value = new T(std::forward<Args>(args)...);
             CopyOrMoveNElem(data_ + size_ - 1, 1, data_ + size_);
             std::move_backward(data_ + index, data_ + size_ - 1, data_ + size_);
@@ -266,6 +256,7 @@ public:
     }
 
     iterator Erase(const_iterator pos) noexcept(std::is_nothrow_move_assignable_v<T>){
+        assert(begin() <= pos && pos <= end());
         size_t index = static_cast<size_t>(pos - data_.GetAddress());
         std::move(data_ + index + 1, data_ + size_, data_ + index);
         (data_ + size_ - 1)->~T();
